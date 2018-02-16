@@ -21,7 +21,6 @@ import com.codeabovelab.dm.cluman.ui.HttpException;
 import com.codeabovelab.dm.common.utils.ArrayUtils;
 import com.codeabovelab.dm.common.utils.StringUtils;
 import org.springframework.http.HttpStatus;
-import org.springframework.util.Assert;
 
 import java.text.MessageFormat;
 
@@ -57,6 +56,17 @@ public abstract class ExtendedAssert {
      */
     public static void badRequest(boolean ifFalse, String message, Object... args) {
         genericCode(HttpStatus.BAD_REQUEST, ifFalse, message, args);
+    }
+
+    /**
+     * Throw {@link com.codeabovelab.dm.cluman.ui.HttpException} with {@link org.springframework.http.HttpStatus#INTERNAL_SERVER_ERROR }
+     * when <code>ifFalse</code> is false
+     * @param ifFalse condition
+     * @param message template for {@link MessageFormat} or simple text when no args
+     * @param args
+     */
+    public static void error(boolean ifFalse, String message, Object... args) {
+        genericCode(HttpStatus.INTERNAL_SERVER_ERROR, ifFalse, message, args);
     }
 
     private static void genericCode(HttpStatus code, boolean ifFalse, String message, Object[] args) {

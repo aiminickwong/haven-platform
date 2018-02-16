@@ -16,20 +16,16 @@
 
 package com.codeabovelab.dm.cluman.objprinter;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.AllArgsConstructor;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.stereotype.Component;
 
 /**
  */
 @Component
+@AllArgsConstructor
 public class ObjectPrinterFactory {
-    private ConversionService conversionService;
-
-    @Autowired
-    public ObjectPrinterFactory(ConversionService conversionService) {
-        this.conversionService = conversionService;
-    }
+    private final ConversionService conversionService;
 
     /**
      * Create object which print argument in human readable format in {@link Object#toString()}

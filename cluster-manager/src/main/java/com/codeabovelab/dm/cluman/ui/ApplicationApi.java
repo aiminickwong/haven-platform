@@ -16,15 +16,13 @@
 
 package com.codeabovelab.dm.cluman.ui;
 
+import com.codeabovelab.dm.cluman.cluster.application.ApplicationService;
+import com.codeabovelab.dm.cluman.cluster.application.CreateApplicationResult;
 import com.codeabovelab.dm.cluman.cluster.compose.ComposeExecutor;
 import com.codeabovelab.dm.cluman.cluster.compose.ComposeUtils;
 import com.codeabovelab.dm.cluman.cluster.compose.model.ComposeArg;
-import com.codeabovelab.dm.cluman.cluster.application.ApplicationService;
-import com.codeabovelab.dm.cluman.cluster.docker.management.result.CreateApplicationResult;
-import com.codeabovelab.dm.cluman.model.Application;
-import com.codeabovelab.dm.cluman.model.ApplicationImpl;
-import com.codeabovelab.dm.cluman.model.ApplicationSource;
-import com.codeabovelab.dm.cluman.model.NotFoundException;
+import com.codeabovelab.dm.cluman.model.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.Files;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +33,6 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.Assert;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -56,12 +53,13 @@ public class ApplicationApi {
 
     private final ComposeExecutor composeExecutor;
     private final ApplicationService applicationService;
+    private final DiscoveryStorage discoveryStorage;
+    private final ObjectMapper mapper;
 
     @RequestMapping(value = "{cluster}/{appId}/compose/mp", method = POST, consumes = {MULTIPART_FORM_DATA_VALUE})
     public ResponseEntity<Application> uploadComposeFile(@PathVariable("cluster") String cluster,
                                                          @PathVariable("appId") String appId,
                                                          @RequestPart(value = "file") MultipartFile multipartFile) throws Exception {
-        Assert.notNull(multipartFile);
         //String root, String cluster, String app, String fileName
         File file = ComposeUtils.applicationPath(composeExecutor.getBasedir(), cluster, appId, null, true);
         Files.write(multipartFile.getBytes(), file);
@@ -80,20 +78,19 @@ public class ApplicationApi {
     @RequestMapping(value = "{cluster}/{appId}/compose", method = POST, consumes = {APPLICATION_OCTET_STREAM_VALUE})
     public ResponseEntity<Application> uploadComposeFileAsStream(@PathVariable("cluster") String cluster, @PathVariable("appId") String appId,
                                                                  @RequestBody InputStreamResource resource) throws Exception {
-        Assert.notNull(resource);
-        //String root, String cluster, String app, String fileName
-        File file = ComposeUtils.applicationPath(composeExecutor.getBasedir(), cluster, appId, null, true);
-        InputStream inputStream = resource.getInputStream();
-        byte[] buffer = new byte[inputStream.available()];
-        inputStream.read(buffer);
-        Files.write(buffer, file);
+        try (InputStream inputStream = resource.getInputStream()) {
+            File file = ComposeUtils.applicationPath(composeExecutor.getBasedir(), cluster, appId, null, true);
+            byte[] buffer = new byte[inputStream.available()];
+            inputStream.read(buffer);
+            Files.write(buffer, file);
+            return launchComposeFile(file, cluster, appId);
+        }
 
-        return launchComposeFile(file, cluster, appId);
     }
 
     @RequestMapping(value = "{cluster}/{appId}/add", method = PUT)
     public void addApplication(@PathVariable("cluster") String cluster, @PathVariable("appId") String appId,
-                               @RequestParam("containers") List<String> containers) throws Exception {
+                               @RequestParam("containers") List<String> containers) {
         ApplicationImpl application = ApplicationImpl.builder()
                 .creatingDate(new Date())
                 .name(appId)
@@ -104,12 +101,11 @@ public class ApplicationApi {
 
     @RequestMapping(value = "{cluster}/{appId}", method = GET)
     public Application getApplication(@PathVariable("cluster") String cluster, @PathVariable("appId") String appId) {
-        Application application = applicationService.getApplication(cluster, appId);
-        return application;
+        return applicationService.getApplication(cluster, appId);
     }
 
     @RequestMapping(value = "{cluster}/{appId}", method = DELETE)
-    public void deleteApplication(@PathVariable("cluster") String cluster, @PathVariable("appId") String appId) throws Exception {
+    public void deleteApplication(@PathVariable("cluster") String cluster, @PathVariable("appId") String appId) {
         applicationService.removeApplication(cluster, appId);
     }
 
@@ -125,14 +121,12 @@ public class ApplicationApi {
 
     @RequestMapping(value = "{cluster}/all", method = GET)
     public List<Application> applicationList(@PathVariable("cluster") String cluster) {
-        List<Application> applications = applicationService.getApplications(cluster);
-        return applications;
+        return applicationService.getApplications(cluster);
     }
 
     @RequestMapping(value = "{cluster}/{appId}/source", method = GET)
     public ApplicationSource getSource(@PathVariable("cluster") String cluster, @PathVariable("appId") String appId) {
-        ApplicationSource src = applicationService.getSource(cluster, appId);
-        return src;
+        return applicationService.getSource(cluster, appId);
     }
 
     @RequestMapping(value = "{cluster}/{appId}/initFile", method = GET, produces = APPLICATION_OCTET_STREAM_VALUE)

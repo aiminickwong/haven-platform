@@ -21,8 +21,6 @@ import com.codeabovelab.dm.cluman.cluster.registry.model.RegistryAdapter;
 import lombok.Builder;
 import org.springframework.beans.factory.InitializingBean;
 
-import java.util.concurrent.ScheduledExecutorService;
-
 /**
  * REST implementation of RegistryService
  */
@@ -32,9 +30,9 @@ public class RegistryServiceImpl extends AbstractV2RegistryService implements Au
 
     @Builder
     public RegistryServiceImpl(RegistryAdapter adapter,
-                               ScheduledExecutorService scheduledExecutorService) {
+                               SearchIndex.Config searchConfig) {
         super(adapter);
-        this.searchIndex = new SearchIndex(this, scheduledExecutorService);
+        this.searchIndex = new SearchIndex(this, searchConfig);
     }
 
     @Override

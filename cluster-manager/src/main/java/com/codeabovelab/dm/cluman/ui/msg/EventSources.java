@@ -23,9 +23,9 @@ import com.codeabovelab.dm.cluman.cluster.docker.management.argument.GetLogConta
 import com.codeabovelab.dm.cluman.cluster.docker.management.argument.GetStatisticsArg;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.ProcessEvent;
 import com.codeabovelab.dm.cluman.cluster.docker.model.DockerEvent;
+import com.codeabovelab.dm.cluman.ds.clusters.ClusterUtils;
 import com.codeabovelab.dm.cluman.ds.nodes.NodeRegistration;
 import com.codeabovelab.dm.cluman.ds.nodes.NodeStorage;
-import com.codeabovelab.dm.cluman.ds.swarm.DockerServices;
 import com.codeabovelab.dm.cluman.events.EventsUtils;
 import com.codeabovelab.dm.cluman.model.*;
 import com.codeabovelab.dm.cluman.security.DockerServiceSecurityWrapper;
@@ -34,6 +34,7 @@ import com.codeabovelab.dm.common.mb.Subscriptions;
 import com.codeabovelab.dm.common.security.Action;
 import com.codeabovelab.dm.cluman.security.TempAuth;
 import com.codeabovelab.dm.common.utils.Closeables;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,24 +58,21 @@ class EventSources {
     private static final long TIMEOUT = 60_000L;
     private final DiscoveryStorage clusterStorage;
     private final NodeStorage nodeStorage;
-    private final DockerServices dockerServices;
-    private ExecutorService executor;
     private final Lock lock = new ReentrantLock();
     //store immutable map
     private final AtomicReference<Map<String, Subscriptions<?>>> subs = new AtomicReference<>(Collections.emptyMap());
-    private volatile long lastUpdate;
     private final Map<String, Subscriptions<?>> systemSubs;
     private final Collection<AutoCloseable> close = new ArrayList<>();
+    private ExecutorService executor;
+    private volatile long lastUpdate;
 
     @SuppressWarnings("unchecked")
     @Autowired
     public EventSources(DiscoveryStorage clusterStorage,
                         NodeStorage nodeStorage,
-                        DockerServices dockerServices,
                         Map<String, Subscriptions<?>> systemSubs) {
         this.clusterStorage = clusterStorage;
         this.nodeStorage = nodeStorage;
-        this.dockerServices = dockerServices;
         this.systemSubs = new HashMap<>(systemSubs);
         addStats(this.systemSubs.get(DockerLogEvent.BUS), DockerLogEvent.BUS + "-stats", this::getDockerLogEventKey);
         addStats(this.systemSubs.get(EventsUtils.BUS_ERRORS), EventsUtils.BUS_ERRORS + "-stats", (e) -> {
@@ -110,6 +108,8 @@ class EventSources {
     public void init() {
         ThreadFactory tf = new ThreadFactoryBuilder().setDaemon(true).setNameFormat(getClass().getSimpleName() + "-%d").build();
         executor = Executors.newCachedThreadPool(tf);
+        // load system subs, it fix issue: "Can not find Subscriptions: 'bus.cluman.errors'"
+        subs.set(ImmutableMap.copyOf(systemSubs));
     }
 
     @PreDestroy
@@ -132,13 +132,12 @@ class EventSources {
             esuc.putAll(systemSubs);
             List<NodesGroup> clusters = clusterStorage.getClusters();
             for(NodesGroup ng: clusters) {
-                if(!ng.getFeatures().contains(NodesGroup.Feature.SWARM)) {
+                if(!ClusterUtils.isDockerBased(ng) || !ng.getState().isOk()) {
                     continue;
                 }
                 String id = "cluster:" + ng.getName() + ":docker";
-                DockerService docker = ng.getDocker();
                 //swarm produce events only after 1.2.4 version
-                esuc.update(id, (i) -> makeDocker(docker, id));
+                esuc.update(id, (i) -> makeDocker(ng.getDocker(), id));
             }
             Collection<NodeInfo> nodes = nodeStorage.getNodes((nr) -> true);
             for(NodeInfo ni: nodes) {
@@ -147,6 +146,7 @@ class EventSources {
             subs.compareAndSet(esuc.getOldMap(), esuc.getNewMap());
             //close outdated subscriptions (do not put it in finally block)
             esuc.free();
+            lastUpdate = System.currentTimeMillis();
         } finally {
             lock.unlock();
         }
@@ -154,12 +154,12 @@ class EventSources {
 
     private void processNode(Esuc esuc,
                                 NodeInfo ni) {
+        NodeRegistration nr = nodeStorage.getNodeRegistration(ni.getName());
         {
             String id = "node:" + ni.getName() + ":health";
-            NodeRegistration nr = nodeStorage.getNodeRegistration(ni.getName());
             esuc.update(id, (i) -> nr.getHealthSubscriptions());
         }
-        DockerService service = dockerServices.getNodeService(ni.getName());
+        DockerService service = nr.getDocker();
         if(service == null || !service.isOnline()) {
             return;
         }

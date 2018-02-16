@@ -50,8 +50,7 @@ class KeeperDeserializer extends JsonDeserializer<Object> implements ContextualD
      */
     @Override
     public Object deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-        Object value = getInternalValue(p, ctxt);
-        return value;
+        return getInternalValue(p, ctxt);
     }
 
     private Object getInternalValue(JsonParser p, DeserializationContext ctxt) throws IOException {
@@ -68,7 +67,7 @@ class KeeperDeserializer extends JsonDeserializer<Object> implements ContextualD
     }
 
     private JavaType resolve(final JavaType type) {
-        Assert.notNull(type);
+        Assert.notNull(type, "type can't be null");
         JavaType tmp = type;
         while(Keeper.class.equals(tmp.getRawClass())) {
             TypeBindings bindings = tmp.getBindings();

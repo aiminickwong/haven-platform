@@ -18,20 +18,16 @@ package com.codeabovelab.dm.cluman.pipeline;
 
 import com.codeabovelab.dm.cluman.batch.LoadContainersOfImageTasklet;
 import com.codeabovelab.dm.cluman.cluster.docker.management.DockerService;
-import com.codeabovelab.dm.cluman.cluster.docker.management.argument.CreateContainerArg;
 import com.codeabovelab.dm.cluman.cluster.docker.management.argument.GetContainersArg;
 import com.codeabovelab.dm.cluman.cluster.docker.management.argument.TagImageArg;
 import com.codeabovelab.dm.cluman.cluster.filter.Filter;
 import com.codeabovelab.dm.cluman.cluster.filter.LabelFilter;
 import com.codeabovelab.dm.cluman.cluster.registry.RegistryRepository;
 import com.codeabovelab.dm.cluman.cluster.registry.RegistryService;
-import com.codeabovelab.dm.cluman.ds.DockerServiceRegistry;
-import com.codeabovelab.dm.cluman.ds.container.ContainerManager;
 import com.codeabovelab.dm.cluman.job.JobInstance;
 import com.codeabovelab.dm.cluman.job.JobParameters;
 import com.codeabovelab.dm.cluman.job.JobsManager;
-import com.codeabovelab.dm.cluman.model.DockerContainer;
-import com.codeabovelab.dm.cluman.model.Severity;
+import com.codeabovelab.dm.cluman.model.*;
 import com.codeabovelab.dm.cluman.pipeline.arg.PipelineDeployArg;
 import com.codeabovelab.dm.cluman.pipeline.arg.PipelinePromoteArg;
 import com.codeabovelab.dm.cluman.pipeline.arg.PipelineSchemaArg;
@@ -76,18 +72,16 @@ public class PipelineServiceImpl implements PipelineService {
     private final KvMapperFactory kvmf;
     private final MessageBus<PipelineEvent> pipelineEventBus;
     private final String pipelinePrefix;
-    private final DockerServiceRegistry dockerServiceRegistry;
+    private final DiscoveryStorage dockerServiceRegistry;
     private final JobsManager jobsManager;
     private final RegistryRepository registryRepository;
-    private final ContainerManager containerManager;
 
     private final String updateCronExpression;
 
     @Autowired
     public PipelineServiceImpl(KvMapperFactory kvmf,
-                               DockerServiceRegistry dockerServiceRegistry,
+                               DiscoveryStorage dockerServiceRegistry,
                                RegistryRepository registryRepository,
-                               ContainerManager containerManager,
                                @Qualifier(PipelineEvent.BUS) MessageBus<PipelineEvent> pipelineEventBus,
                                JobsManager jobsManager,
                                @Value("${dm.pipeline.updateCronExpression:* * * * * *}") String updateCronExpression) {
@@ -96,7 +90,6 @@ public class PipelineServiceImpl implements PipelineService {
         this.registryRepository = registryRepository;
         this.pipelineEventBus = pipelineEventBus;
         this.dockerServiceRegistry = dockerServiceRegistry;
-        this.containerManager = containerManager;
         KeyValueStorage storage = kvmf.getStorage();
         this.updateCronExpression = updateCronExpression;
         this.pipelinePrefix = storage.getPrefix() + "/pipelines/";
@@ -187,7 +180,7 @@ public class PipelineServiceImpl implements PipelineService {
         Map<String, PipelineInstance> instancesMapByPipeline = getInstancesMapByPipeline(pipelineSchema.getName());
 
         if (!instancesMapByPipeline.isEmpty()) {
-            instancesMapByPipeline.values().stream().forEach(pipelineInstance -> checkCreateJobs(pipelineSchema, stage, pipelineInstance));
+            instancesMapByPipeline.values().forEach(pipelineInstance -> checkCreateJobs(pipelineSchema, stage, pipelineInstance));
         } else {
             String name = pipelineSchema.getName() + ":" + pipelineSchema.getFilter();
             createPipelineInstance(name, name, pipelineSchema, stage);
@@ -337,7 +330,10 @@ public class PipelineServiceImpl implements PipelineService {
         Map<String, String> labels = createContainerArg.getContainer().getLabels();
         labels.putAll(getRequiredLabels(pipelineSchema, pipelineStages));
         labels.put(PIPELINE_ID, pipelineInstanceId);
-        containerManager.createContainer(createContainerArg);
+        String clusterName = createContainerArg.getContainer().getCluster();
+        NodesGroup cluster = dockerServiceRegistry.getCluster(clusterName);
+        Assert.notNull(cluster, "Can not find cluster: " + clusterName);
+        cluster.getContainers().createContainer(createContainerArg);
         pipelineInstances.flush(instance.getId());
         riseEvent(pipelineSchema, "deploy");
 
@@ -346,7 +342,7 @@ public class PipelineServiceImpl implements PipelineService {
     @Override
     public void deletePipeline(String pipelineName) {
         Map<String, PipelineInstance> instancesMapByPipeline = getInstancesMapByPipeline(pipelineName);
-        instancesMapByPipeline.values().stream().filter(a -> a != null).forEach(this::deleteInstance);
+        instancesMapByPipeline.values().stream().filter(Objects::nonNull).forEach(this::deleteInstance);
 
         PipelineSchema pipelineSchema = getPipelineSchema(pipelineName);
         Assert.notNull(pipelineSchema, "Can't find pipeline by name " + pipelineSchema);
@@ -385,8 +381,7 @@ public class PipelineServiceImpl implements PipelineService {
 
     @Override
     public PipelineSchema getPipeline(String pipelineId) {
-        PipelineSchema pipelineSchema = getPipelineSchema(pipelineId);
-        return pipelineSchema;
+        return getPipelineSchema(pipelineId);
     }
 
     @Override
@@ -398,8 +393,7 @@ public class PipelineServiceImpl implements PipelineService {
 
     @Override
     public PipelineInstance getInstance(String pipelineInstanceId) {
-        PipelineInstance pipelineInstance = getPipelineInstance(pipelineInstanceId);
-        return pipelineInstance;
+        return getPipelineInstance(pipelineInstanceId);
     }
 
     @Override
@@ -408,7 +402,7 @@ public class PipelineServiceImpl implements PipelineService {
             Map<String, PipelineInstance> instancesMap = getInstancesMap();
             return instancesMap.values().stream()
                     .filter(p -> p.getPipeline().equals(pipelineId))
-                    .collect(Collectors.toMap(a -> a.getId(), a -> a));
+                    .collect(Collectors.toMap(PipelineInstance::getId, a -> a));
         } catch (Exception e) {
             return Collections.emptyMap();
         }

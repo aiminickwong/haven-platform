@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/codeabovelab/haven-platform.svg?branch=master)](https://travis-ci.org/codeabovelab/haven-platform) [![codebeat badge](https://codebeat.co/badges/3c0e5ad9-8f24-4c41-bddc-2221a3b05f7b)](https://codebeat.co/projects/github-com-codeabovelab-haven-platform)
+[![Build Status](https://travis-ci.org/codeabovelab/haven-platform.svg?branch=master)](https://travis-ci.org/codeabovelab/haven-platform) [![codebeat badge](https://codebeat.co/badges/3c0e5ad9-8f24-4c41-bddc-2221a3b05f7b)](https://codebeat.co/projects/github-com-codeabovelab-haven-platform) [![docker hub](https://img.shields.io/docker/pulls/codeabovelab/cluster-manager.svg)](https://hub.docker.com/r/codeabovelab/cluster-manager/)
 
 # Haven: Container Management Simplified
  
@@ -6,9 +6,9 @@
 Haven is a Docker cluster management system. The user controls the entire platform via user-friendly yet powerful UI and 
 commandline tools. Built on top of Docker, Swarm, and Compose, it offers multiple clusters and image registries management.
 
-License
+License ([Apache Version 2.0](http://www.apache.org/licenses/LICENSE-2.0))
 -------
-Copyright 2016 Code Above Lab LLC
+Copyright 2017 [Code Above Lab Inc](https://www.codeabovelab.com)
 
 Licensed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0) (the "License");
 you may not use this file except in compliance with the License.
@@ -93,4 +93,11 @@ Users can be assigned administrative rights to specific clusters to avoid admin 
        
        c. or just click update all in this cluster
 5. Backups of system configuration
+6. Network management:
+![api](https://raw.githubusercontent.com/codeabovelab/haven-platform/master/doc/img/network.png)
+7. Events:
+![api](https://raw.githubusercontent.com/codeabovelab/haven-platform/master/doc/img/events.png)
+8. API
+![api](https://raw.githubusercontent.com/codeabovelab/haven-platform/master/doc/img/api.png)
+
 

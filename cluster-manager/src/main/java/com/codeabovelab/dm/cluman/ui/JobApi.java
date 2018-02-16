@@ -24,8 +24,7 @@ import com.codeabovelab.dm.common.mb.Subscription;
 import com.codeabovelab.dm.common.utils.ExecutorUtils;
 import com.codeabovelab.dm.common.utils.Throwables;
 import lombok.AllArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -46,13 +45,13 @@ import static org.springframework.web.bind.annotation.RequestMethod.GET;
 /**
  */
 @RestController
-@RequestMapping(value = "/ui/api/", produces = MediaType.APPLICATION_JSON_VALUE)
+@RequestMapping(value = "/ui/api/jobs", produces = MediaType.APPLICATION_JSON_VALUE)
 @AllArgsConstructor(onConstructor = @__(@Autowired))
 public class JobApi {
 
     private final JobsManager jobsManager;
 
-    @RequestMapping(value = "/jobs/", method = GET)
+    @RequestMapping(value = "/", method = GET)
     public List<UiJob> list() {
         LocalDateTime time = LocalDateTime.now().minusDays(1L);
         return jobsManager.getJobs().stream()
@@ -62,32 +61,32 @@ public class JobApi {
           .collect(Collectors.toList());
     }
 
-    @RequestMapping(value = "/jobtypes/", method = GET)
+    @RequestMapping(value = "/types-name/", method = GET)
     public Set<String> listTypes() {
         return jobsManager.getTypes();
     }
 
     /* we need to use regexp in var for match literals with multiple dots  */
-    @RequestMapping(value = "/jobtypes/{type:.+}", method = GET)
+    @RequestMapping(value = "/types/{type:.+}", method = GET)
     public JobDescription getType(@PathVariable("type") String type) {
         return jobsManager.getDescription(type);
     }
 
-    @RequestMapping(value = "/jobs/{job:.*}", method = GET)
+    @RequestMapping(value = "/{job:.*}", method = GET)
     public UiJob getJob(@PathVariable("job") String job) {
         JobInstance ji = jobsManager.getJob(job);
         ExtendedAssert.notFound(ji, "Job was not found by id: " + job);
         return UiJob.toUi(ji);
     }
 
-    @RequestMapping(value = "/jobs/{job:.*}/log", method = GET)
+    @RequestMapping(value = "/{job:.*}/log", method = GET)
     public List<UiJobEvent> getJobLog(@PathVariable("job") String job) {
         JobInstance ji = jobsManager.getJob(job);
         ExtendedAssert.notFound(ji, "Job was not found by id: " + job);
         return ji.getLog().stream().map(JobApi::toUi).collect(Collectors.toList());
     }
 
-    @RequestMapping(value = "/jobs/{job:.*}", method = DELETE)
+    @RequestMapping(value = "/{job:.*}", method = DELETE)
     public UiJob deleteJob(@PathVariable("job") String job) {
         JobInstance ji = jobsManager.getJob(job);
         ExtendedAssert.notFound(ji, "Job was not found by id: " + job);
@@ -96,7 +95,7 @@ public class JobApi {
         return UiJob.toUi(ji);
     }
 
-    @RequestMapping(value = "/jobs/{job:.*}/logStream", method = GET, produces = MediaType.APPLICATION_JSON_VALUE)
+    @RequestMapping(value = "/{job:.*}/logStream", method = GET, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseBodyEmitter getJobLogStream(@PathVariable("job") String job) {
         JobInstance ji = jobsManager.getJob(job);
         ExtendedAssert.notFound(ji, "Job was not found by id: " + job);
@@ -116,7 +115,7 @@ public class JobApi {
         return emitter;
     }
 
-    @RequestMapping(value = "/jobs/", method = RequestMethod.POST, produces = MediaType.APPLICATION_JSON_VALUE)
+    @RequestMapping(value = "/", method = RequestMethod.POST, produces = MediaType.APPLICATION_JSON_VALUE)
     public UiJob newJob(@RequestBody JobParameters parameters) throws Exception {
         JobInstance jobInstance = jobsManager.create(parameters);
         //start and wait when it started
@@ -142,9 +141,9 @@ public class JobApi {
                 .build();
     }
 
+    @Slf4j
     public static class JobEventConsumer implements Consumer<JobEvent> {
 
-        private static final Logger LOG = LoggerFactory.getLogger(JobEventConsumer.class);
         private final ResponseBodyEmitter emitter;
         private final JobInstance jobInstance;
         private final JobsManager jobsManager;
@@ -164,17 +163,17 @@ public class JobApi {
             } catch (IllegalStateException | IOException e) {
                 //we assume that it mean client disconnect or other unrecoverable error
                 close();
-                LOG.error("Disconnect due to error: {}", e.toString());
+                log.error("Disconnect due to error: {}", e.toString());
             } catch (Exception e) {
                 // stack traces for this error too noisy in log
-                LOG.error("Can not send event: {}", e.toString());
+                log.error("Can not send event: {}", e.toString());
             }
             try {
                 if(event.getInfo().getStatus().isEnd()) {
                     close();
                 }
             } catch (Exception e) {
-                LOG.error("end event error", e);
+                log.error("end event error", e);
             }
         }
 

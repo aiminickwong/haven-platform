@@ -25,10 +25,10 @@ import java.util.Locale;
  */
 public final class DataSize {
 
-    public static long KiB = 1L << 10L;
-    public static long MiB = 1L << 20L;
-    public static long GiB = 1L << 30L;
-    public static long TiB = 1L << 40L;
+    public static final long KiB = 1L << 10L;
+    public static final long MiB = 1L << 20L;
+    public static final long GiB = 1L << 30L;
+    public static final long TiB = 1L << 40L;
 
     private DataSize() {
     }
@@ -50,7 +50,7 @@ public final class DataSize {
         return (long)(rem * mult);
     }
 
-    private static double parseMult(String full, int from) {
+    private static long parseMult(String full, int from) {
         int length = full.length() - from;
         if(length == 0) {
             return 1;
@@ -85,6 +85,15 @@ public final class DataSize {
             default:
                 throw new IllegalArgumentException("Invalid memory string: " + full);
         }
+    }
+
+    /**
+     * Parse literals like KiB or KB to its number representation 1024 (for KB & KiB)
+     * @param mult str
+     * @return long value
+     */
+    public static long parseMultiplier(String mult) {
+        return parseMult(mult, 0);
     }
 
     public static String toString(long src) {

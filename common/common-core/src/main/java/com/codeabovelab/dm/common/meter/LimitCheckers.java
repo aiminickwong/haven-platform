@@ -17,7 +17,6 @@
 package com.codeabovelab.dm.common.meter;
 
 import com.codahale.metrics.Metered;
-import com.codahale.metrics.Metric;
 import com.codahale.metrics.Sampling;
 import org.springframework.util.Assert;
 
@@ -35,7 +34,7 @@ public final class LimitCheckers {
 
         public Builder<T> checkEvery(long time, TimeUnit unit) {
             Assert.isTrue(time > 0, "time <= 0");
-            Assert.notNull(unit);
+            Assert.notNull(unit, "TimeUnit can't be null");
             this.checkEveryTime = time;
             this.checkEveryUnit = unit;
             return this;
@@ -61,7 +60,7 @@ public final class LimitCheckers {
 
         public ConfigurableChecker(Builder<T> b) {
             super(b.getPeriod());
-            Assert.notNull(b.limit);
+            Assert.notNull(b.limit, "limit condition can't be null");
             this.limit = b.limit;
         }
 
@@ -96,7 +95,7 @@ public final class LimitCheckers {
 
         public MetricLimit(Condition<V> condition) {
             this.condition = condition;
-            Assert.notNull(this.condition);
+            Assert.notNull(this.condition, "condition can't be null");
         }
 
         @Override

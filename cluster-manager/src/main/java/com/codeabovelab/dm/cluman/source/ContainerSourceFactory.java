@@ -20,21 +20,22 @@ import com.codeabovelab.dm.cluman.cluster.docker.model.*;
 import com.codeabovelab.dm.cluman.ds.SwarmUtils;
 import com.codeabovelab.dm.cluman.model.ContainerSource;
 import com.codeabovelab.dm.cluman.model.ImageName;
+import com.codeabovelab.dm.cluman.model.MountSource;
 import com.codeabovelab.dm.cluman.utils.ContainerUtils;
+import com.codeabovelab.dm.common.utils.StringUtils;
 import com.codeabovelab.dm.common.utils.Sugar;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
  */
+@Slf4j
 @Component
 @AllArgsConstructor(onConstructor = @__(@Autowired))
 public class ContainerSourceFactory {
@@ -45,8 +46,10 @@ public class ContainerSourceFactory {
         convert(details, dest);
         SwarmUtils.restoreEnv(objectMapper, dest);
         SwarmUtils.clearConstraints(dest.getLabels());
+
     }
 
+    @SuppressWarnings("deprecation")
     private static void convert(ContainerDetails container, ContainerSource nc) {
         nc.setId(container.getId());
         String name = ContainerUtils.fixContainerName(container.getName());
@@ -59,14 +62,8 @@ public class ContainerSourceFactory {
         nc.setCpuQuota(hostConfig.getCpuQuota());
         Sugar.setIfNotNull(nc.getDns()::addAll, hostConfig.getDns());
         Sugar.setIfNotNull(nc.getDnsSearch()::addAll, hostConfig.getDnsSearch());
-        nc.setVolumeDriver(hostConfig.getVolumeDriver());
-        VolumesFrom[] volumesFrom = hostConfig.getVolumesFrom();
-        if(volumesFrom != null) {
-            for(VolumesFrom vf : volumesFrom) {
-                nc.getVolumesFrom().add(vf.toString());
-            }
-        }
         Sugar.setIfNotNull(nc.getEnvironment()::addAll, config.getEnv());
+        Sugar.setIfNotNull(nc.getCommand()::addAll, config.getCmd());
         Sugar.setIfNotNull(nc.getExtraHosts()::addAll, hostConfig.getExtraHosts());
         nc.setHostname(config.getHostName());
         Sugar.setIfNotNull(nc.getLabels()::putAll, config.getLabels());
@@ -86,12 +83,54 @@ public class ContainerSourceFactory {
 
         nc.getPorts().putAll(parsePorts(portBindings));
         nc.setVolumeDriver(hostConfig.getVolumeDriver());
+        VolumesFrom[] volumesFrom = hostConfig.getVolumesFrom();
+        if(volumesFrom != null) {
+            Arrays.stream(volumesFrom).forEach(vf -> nc.getVolumesFrom().add(vf.toString()));
+        }
+        nc.setVolumeDriver(hostConfig.getVolumeDriver());
         nc.getVolumeBinds().addAll(hostConfig.getBinds());
+        Set<String> ignored = hostConfig.getBinds().stream().map(s -> StringUtils.afterLast(s, ':')).collect(Collectors.toSet());
+        loadMounts(container.getMounts(), hostConfig.getMounts(), nc.getMounts(), ignored);
+
 //TODO            createContainerArg.setLogging(hostConfig.getLogConfig()); and etc
         Sugar.setIfNotNull(nc.getSecurityOpt()::addAll, hostConfig.getSecurityOpts());
 
         nc.setImage(resolveImageName(container));
         nc.setImageId(container.getImageId());
+    }
+
+    private static void loadMounts(List<ContainerDetails.MountPoint> srcPoints, List<Mount> srcMounts,
+                                   List<MountSource> dest, Set<String> ignored) {
+        log.info("srcPoints: {}, srcMounts:{}, ignored: {}", srcPoints, srcMounts, ignored);
+        // docker place all mounts to MountPoints, but this does not provide enough info
+        // otherwise hostConfig.mounts have full info but sometime may be empty, therefore we use both sources
+        Set<String> converted = new HashSet<>();
+        if(srcMounts != null) {
+            srcMounts.stream()
+                    .filter(m -> !m.isSystem())
+                    .filter(m -> !ignored.contains(m.getTarget()))
+                    .forEach(m -> {
+                MountSource ms = SourceUtil.toMountSource(m);
+                if (ms != null) {
+                    converted.add(ms.getTarget());
+                    dest.add(ms);
+                }
+            });
+        }
+        if(srcPoints != null) {
+            srcPoints.stream()
+                    .filter(m -> !m.isSystem())
+                    .filter(m -> !ignored.contains(m.getDestination()))
+                    .filter(p -> !converted.contains(p.getDestination())) // we prevent appearing same mount from multiple source
+                    .filter(p -> p.getType() != null)
+                    .forEach(p -> {
+                MountSource ms = SourceUtil.toMountSource(p);
+                if (ms != null) {
+                    dest.add(ms);
+                }
+            });
+        }
+        log.info("result mounts: {}", dest);
     }
 
     public static String resolveImageName(ContainerDetails container) {
@@ -120,7 +159,7 @@ public class ContainerSourceFactory {
                 ExposedPort key = exposedPortEntry.getKey();
                 Ports.Binding[] value = exposedPortEntry.getValue();
                 for (Ports.Binding binding : value) {
-                    map.put(Integer.toString(key.getPort()), binding.getHostPortSpec().toString());
+                    map.put(Integer.toString(key.getPort()), binding.getHostPortSpec());
                 }
             }
             return map;

@@ -16,14 +16,13 @@
 
 package com.codeabovelab.dm.cluman.ds.container;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.StringUtils;
 
 import java.util.*;
 
+@Slf4j
 public final class ContainerStarterHelper {
-
-    private static final Logger LOG = LoggerFactory.getLogger(ContainerStarterHelper.class);
 
     private static final String CONSTRAINT_NODE = "constraint:node";
 
@@ -32,11 +31,13 @@ public final class ContainerStarterHelper {
         List<NodePriority> values = new ArrayList<>();
         for (String n : existsNodes) {
             Integer count = appCountPerNode.get(n);
-            if (count == null) { count = 0; }
-            values.add( new NodePriority(n, count));
+            if (count == null) {
+                count = 0;
+            }
+            values.add(new NodePriority(n, count));
         }
         Collections.sort(values);
-        LOG.info("Service count by nodes {}", values);
+        log.info("Service count by nodes {}", values);
         return values;
     }
 
@@ -44,6 +45,7 @@ public final class ContainerStarterHelper {
      * Calculate constraints for container
      * 1. we do not allow to start N same containers on one node
      * 2. we set node with min count of services as preferred (soft constraint)
+     *
      * @param existsNodes
      * @param node
      * @param appCountPerNode
@@ -55,16 +57,17 @@ public final class ContainerStarterHelper {
                                             Map<String, Integer> appCountPerNode,
                                             int maxCount,
                                             Collection<String> dest) {
-        for(String i: dest) {
-            if(i.startsWith(CONSTRAINT_NODE)) {
-                // already has node constraints
-                return;
-            }
-        }
-        if (node != null) {
+
+        if (StringUtils.hasText(node)) {
+            // specified node has higher priority
+            dest.removeIf(i -> i.startsWith(CONSTRAINT_NODE));
             dest.add(CONSTRAINT_NODE + "==" + node);
+        }
+
+        if (dest.stream().anyMatch(i -> i.startsWith(CONSTRAINT_NODE))) {
             return;
         }
+
         if (appCountPerNode == null || appCountPerNode.isEmpty()) {
             return;
         }
@@ -74,7 +77,7 @@ public final class ContainerStarterHelper {
         String preferred = calculatePreferredNodeExpression(values, maxCount);
         dest.add(preferred);
         String forbidden = calculateFullNodeExpression(getFullNodes(values, maxCount));
-        if(forbidden != null) {
+        if (forbidden != null) {
             dest.add(forbidden);
         }
     }
@@ -101,12 +104,12 @@ public final class ContainerStarterHelper {
             throw new IllegalArgumentException("Can't schedule container, all nodes contains at least " + maxCount);
         }
         String cs = CONSTRAINT_NODE + "==~" + nodePriority.name;
-        LOG.info("Preffered node: {}", cs);
+        log.info("Preferred node: {}", cs);
         return cs;
     }
 
     private static List<NodePriority> getFullNodes(List<NodePriority> values, int max) {
-        if(max < 1) {
+        if (max < 1) {
             return Collections.emptyList();
         }
         List<NodePriority> result = new ArrayList<>();
@@ -116,7 +119,7 @@ public final class ContainerStarterHelper {
             }
         }
         if (!result.isEmpty()) {
-            LOG.info("Full nodes: {}", result);
+            log.info("Full nodes: {}", result);
         }
         return result;
     }

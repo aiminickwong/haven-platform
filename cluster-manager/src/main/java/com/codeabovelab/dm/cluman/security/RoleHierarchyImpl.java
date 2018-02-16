@@ -19,7 +19,6 @@ package com.codeabovelab.dm.cluman.security;
 import com.codeabovelab.dm.common.security.Authorities;
 import com.codeabovelab.dm.common.security.GrantedAuthorityImpl;
 import com.codeabovelab.dm.common.security.MultiTenancySupport;
-import com.google.common.collect.ImmutableMap;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.util.Assert;
@@ -80,7 +79,7 @@ public class RoleHierarchyImpl implements RoleHierarchy, AuthoritiesService {
         //gather all defined authorities
         Set<String> all = new HashSet<>();
         all.addAll(src.keySet());
-        src.values().stream().forEach(all::addAll);
+        src.values().forEach(all::addAll);
 
         // store authorities
         this.allAuthorities = Collections.unmodifiableList(all.stream().map(Authorities::fromName).collect(Collectors.toList()));

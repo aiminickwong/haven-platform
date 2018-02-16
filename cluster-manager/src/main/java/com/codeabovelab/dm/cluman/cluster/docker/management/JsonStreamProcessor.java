@@ -24,16 +24,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.SettableFuture;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.function.Consumer;
 
+@Slf4j
 public class JsonStreamProcessor<T> implements ResponseStreamProcessor<T> {
-
-    private static final Logger LOG = LoggerFactory.getLogger(JsonStreamProcessor.class);
 
     private static final JsonFactory JSON_FACTORY = new JsonFactory();
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -54,7 +52,7 @@ public class JsonStreamProcessor<T> implements ResponseStreamProcessor<T> {
         InputStream response = context.getStream();
         final Thread thread = Thread.currentThread();
         SettableFuture<Boolean> interrupter = context.getInterrupter();
-        interrupter.addListener(() -> thread.interrupt(), MoreExecutors.directExecutor());
+        interrupter.addListener(thread::interrupt, MoreExecutors.directExecutor());
         try {
             JsonParser jp = JSON_FACTORY.createParser(response);
             Boolean closed = jp.isClosed();
@@ -65,10 +63,11 @@ public class JsonStreamProcessor<T> implements ResponseStreamProcessor<T> {
                     // exclude empty item serialization into class #461
                     if (!objectNode.isEmpty(null)) {
                         T next = OBJECT_MAPPER.treeToValue(objectNode, clazz);
-                        LOG.trace("Monitor value: {}", next);
+                        log.trace("Monitor value: {}", next);
                         watcher.accept(next);
                     }
                 } catch (Exception e) {
+                    log.error("Error on process json item.", e);
                 }
 
                 closed = jp.isClosed();
@@ -80,7 +79,7 @@ public class JsonStreamProcessor<T> implements ResponseStreamProcessor<T> {
             try {
                 response.close();
             } catch (IOException e) {
-                LOG.error("Can't close stream", e);
+                log.error("Can't close stream", e);
 
             }
         }

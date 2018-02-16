@@ -191,8 +191,7 @@ public class EtcdClientWrapper implements KeyValueStorage {
 
     private EtcdKeysResponse executeRequest(EtcdKeyRequest req) throws Exception {
         EtcdResponsePromise<EtcdKeysResponse> send = req.send();
-        EtcdKeysResponse resp = send.get();
-        return resp;
+        return send.get();
     }
 
     private void fillPutReq(WriteOptions ops, EtcdKeyPutRequest req) {
@@ -205,7 +204,7 @@ public class EtcdClientWrapper implements KeyValueStorage {
         }
         final long ttl = ops.getTtl();
         if(ttl > 0) {
-            if(ttl >= Integer.MAX_VALUE) {
+            if(ttl > Integer.MAX_VALUE) {
                 throw new IllegalArgumentException("TTL value too big: " + ttl);
             }
             req.ttl((int) ttl);

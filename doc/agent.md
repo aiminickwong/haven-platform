@@ -1,60 +1,44 @@
 # Haven Agent #
 
-The agent is [a Python script](/cluster-manager/src/main/resources/static/res/agent/node-agent.py). 
-It is written in Python 3 and only has one dependency: python3-psutil >= 4.2.
+Currently Havens can be setup to use with or without agents on child nodes. However, whenever possible, we recommend using the agent image for additional stats to be sent back to the server.
 
-use '-h' option for getting help:
+Quick Comparison:
+
+| name        | secure usage Docker API | gather node metrics | do not have extra dependencies | 
+|-------------|---|---|---|
+| no agent    | - | - | + |
+| agent image | + | + | + |
+
+The problems listed have caused issues with agent development:
+ - By default, docker listens on the unix socket and is inaccessible from network. When you enable the listening on 
+ TCP port, Docker will be insecure or require additional certificate configuration 
+ <sup>[1](https://docs.docker.com/edge/engine/reference/commandline/dockerd/#daemon-socket-option)</sup>.
+ - The health of the node depends on CPU and RAM usage and other additional resources like disk space. Docker can monitor 
+ only a subset of the mentioned resource.
+
+## Agent Image ##
+
+New version (1.2) of system can work without the agent installed but we have implement the new agent with proxy of Docker 
+connection (1.2.3). Agent is connected to Docker via unix socket. Port 8771 is opened with SSL encryption and
+authorization (credentials admin:password, see 'dm.auth.adminPassword' option of agent)
+
+Copy start string from 'Admin' -> 'Add node'
+
+![agent](https://raw.githubusercontent.com/codeabovelab/haven-platform/master/doc/img/agent.png)
+start string example:
 
 ```
-usage: haven-agent.py [-h] [-d DOCKER] [-m MASTER] [-t TIMEOUT] [-v]
-                           [-f CONFIG]
-
-Haven node agent.
-
-optional arguments:
-  -h, --help            shows this help message
-  -d DOCKER, --docker DOCKER
-                        IP and port of docker service
-  -m MASTER, --master MASTER
-                        IP and port of Haven service
-  -t TIMEOUT, --timeout TIMEOUT
-                        timeout in seconds between node registration updates
-  -v, --verbose         logging level, -v is INFO, -vv is DEBUG
-  -f CONFIG, --config CONFIG
-                        path to the configuration file
-
-Example:
-  haven-agent.py -d 172.31.0.11:2375 -m 172.31.0.3:8763 -t 2 -vv
-Sample config:
-  [main]
-  docker = 172.31.0.12:2375
-  master = 172.31.0.3:8762
-  timeout = 10
-  log_level = 2
-By default find config in:
-        $CWD/haven-agent.ini
-        $HOME/.config/haven-agent.ini
-        /etc/haven-agent.ini
+docker run --name havenAgent -d -e "dm_agent_notifier_server=URL-TO-HOST"  --restart=unless-stopped -p 8771:8771 -v /run/docker.sock:/run/docker.sock codeabovelab/agent:latest
 ```
 
-Note that all Agent and Master instances must be accessible to each other.
+Note that the agent is built with a self-signed certificate and cluster-manager use same certificate too. 
+[Certificate generated on each build](https://github.com/codeabovelab/haven-platform/blob/dc38ed2ed9368fa4436b411400f4b20cd92457a2/pom.xml#L121). Therefore, when you use the agent with cluster-manager of different version, you will get an error. It can be fixed by using the same version or by setting the option 'dm.ssl.check=false' in the cluster-manager (default value is false).
 
-## How does the Agent work? ##
-
-The Agent sends data to MASTER on each TIMEOUT seconds. 
-The Agent starts at DEBUG level and prints the transmitted data to stdout:
-```
-% ./haven-agent.py         
-2016-08-10 15:03:04,583 - INFO - Configs: /home/user/.config/haven-agent.ini
-Arguments: {'timeout': 10, 'master': '172.31.0.3:8762', 'docker': '172.31.0.12:2375', 'log_level': 2}
-2016-08-10 15:03:05,607 - DEBUG - do registration with {"time": "2016-08-10T15:03:05.559807", "labels": {}, "id": "docker-exp", ...}
-```
 
 The Agent sends data in JSON format to 'http://$MASTER/discovery/nodes/$NODE_NAME' (see `com.codeabovelab.dm.cluman.ds.nodes.NodeAgentData` ). 
-The [cluman](cluman.md) data is processed by `TokenDiscoveryServer.registerNodeFromAgent()`. 
-Data is gathered from Docker info, optionally through `psutil`, and contains:
+The [cluman](cluman.md) data is processed by `TokenDiscoveryServer.registerNodeFromAgent()`. Data is gathered from Docker info, optionally through `psutil`, and contains:
 
-### Data sent by agents to the master ###
+### Data Transmitted from Agents to Master ###
 
 * time - local time
 * name - Docker host name

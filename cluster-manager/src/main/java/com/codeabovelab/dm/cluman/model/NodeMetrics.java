@@ -23,7 +23,7 @@ import com.google.common.collect.ImmutableMap;
 import lombok.Data;
 import org.springframework.util.CollectionUtils;
 
-import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -36,13 +36,25 @@ import java.util.Map;
 public class NodeMetrics {
 
     public enum State {
-        PENDING, UNHEALTHY, HEALTHY, DISCONNECTED, MAINTENANCE
+        PENDING,
+        UNHEALTHY,
+        HEALTHY,
+        /**
+         * Node is not connected to our system
+         */
+        DISCONNECTED,
+        MAINTENANCE,
+        /**
+         * Node not in cluster
+         */
+        ALONE
     }
 
     @Data
     public static class Builder {
-        private LocalDateTime time;
+        private ZonedDateTime time;
         private Boolean healthy;
+        private Boolean manager;
         private State state;
         private Long swarmMemReserved;
         private Long swarmMemTotal;
@@ -55,7 +67,7 @@ public class NodeMetrics {
         private final Map<String, DiskInfo> disks = new HashMap<>();
         private final Map<String, NetIfaceCounter> net = new HashMap<>();
 
-        public Builder time(LocalDateTime time) {
+        public Builder time(ZonedDateTime time) {
             setTime(time);
             return this;
         }
@@ -94,6 +106,7 @@ public class NodeMetrics {
             }
             setTime(metric.getTime());
             setHealthy(metric.getHealthy());
+            setManager(metric.getManager());
             setState(metric.getState());
             setSwarmMemReserved(metric.getSwarmMemReserved());
             setSwarmMemTotal(metric.getSwarmMemTotal());
@@ -118,12 +131,13 @@ public class NodeMetrics {
                 return this;
             }
             //choose latest time
-            LocalDateTime time = getTime();
-            LocalDateTime newTime = metrics.getTime();
+            ZonedDateTime time = getTime();
+            ZonedDateTime newTime = metrics.getTime();
             if(time == null || newTime != null && newTime.isAfter(time)) {
                 setTime(newTime);
             }
             Sugar.setIfNotNull(this::setHealthy, metrics.getHealthy());
+            Sugar.setIfNotNull(this::setManager, metrics.getManager());
             Sugar.setIfNotNull(this::setState, metrics.getState());
             Sugar.setIfNotNull(this::setSwarmMemReserved, metrics.getSwarmMemReserved());
             Sugar.setIfNotNull(this::setSwarmMemTotal, metrics.getSwarmMemTotal());
@@ -149,6 +163,12 @@ public class NodeMetrics {
             this.healthy = healthy;
             return this;
         }
+
+        public Builder manager(Boolean master) {
+            setManager(master);
+            return this;
+        }
+
         public Builder state(State state) {
             this.state = state;
             return this;
@@ -181,8 +201,9 @@ public class NodeMetrics {
 
     }
 
-    private final LocalDateTime time;
+    private final ZonedDateTime time;
     private final Boolean healthy;
+    private final Boolean manager;
     private final State state;
     private final Long swarmMemReserved;
     private final Long swarmMemTotal;
@@ -199,6 +220,7 @@ public class NodeMetrics {
     public NodeMetrics(Builder b) {
         this.time = b.time;
         this.healthy = b.healthy;
+        this.manager = b.manager;
         this.state = b.state;
         this.swarmMemReserved = b.swarmMemReserved;
         this.swarmMemTotal = b.swarmMemTotal;

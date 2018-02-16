@@ -16,15 +16,16 @@
 
 package com.codeabovelab.dm.cluman.batch;
 
+import com.codeabovelab.dm.cluman.cluster.docker.management.DockerService;
 import com.codeabovelab.dm.cluman.cluster.docker.management.argument.RemoveImageArg;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.RemoveImageResult;
 import com.codeabovelab.dm.cluman.cluster.docker.model.ImageItem;
 import com.codeabovelab.dm.cluman.cluster.filter.FilterFactory;
 import com.codeabovelab.dm.cluman.cluster.registry.RegistryRepository;
-import com.codeabovelab.dm.cluman.ds.swarm.DockerServices;
 import com.codeabovelab.dm.cluman.job.JobBean;
 import com.codeabovelab.dm.cluman.job.JobContext;
 import com.codeabovelab.dm.cluman.job.JobParam;
+import com.codeabovelab.dm.cluman.model.DiscoveryStorage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.CollectionUtils;
 
@@ -51,7 +52,7 @@ public class RemoveNotUsedClusterImagesJob implements Runnable {
     private RegistryRepository registryRepository;
 
     @Autowired
-    private DockerServices dockerServices;
+    private DiscoveryStorage dockerServices;
 
     @Autowired
     private FilterFactory filterFactory;
@@ -60,13 +61,14 @@ public class RemoveNotUsedClusterImagesJob implements Runnable {
     public void run() {
         context.fire("About to delete all not used images from: \"{0}\".", clusterName);
 
-        List<ImageItem> images = dockerServices.getService(clusterName).getImages(ALL);
+        DockerService service = dockerServices.getService(clusterName);
+        List<ImageItem> images = service.getImages(ALL);
 
         if (CollectionUtils.isEmpty(images)) {
             context.fire("Nothing to remove, skipping");
             return;
         }
-        List<RemoveImageResult> result = images.stream().map(i -> dockerServices.getService(clusterName)
+        List<RemoveImageResult> result = images.stream().map(i -> service
                 .removeImage(RemoveImageArg.builder()
                 .cluster(clusterName)
                 .imageId(i.getId())
@@ -78,7 +80,7 @@ public class RemoveNotUsedClusterImagesJob implements Runnable {
     }
 
     private List<String> filter(List<RemoveImageResult> result, Predicate<RemoveImageResult> filter) {
-        return result.stream().filter(filter).map(s -> s.getImage()).collect(Collectors.toList());
+        return result.stream().filter(filter).map(RemoveImageResult::getImage).collect(Collectors.toList());
     }
 
 }

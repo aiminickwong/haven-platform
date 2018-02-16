@@ -16,22 +16,31 @@
 
 package com.codeabovelab.dm.cluman.ui;
 
-import com.codeabovelab.dm.cluman.utils.ContainerUtils;
 import com.codeabovelab.dm.cluman.cluster.application.ApplicationService;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.ResultCode;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.ServiceCallResult;
-import com.codeabovelab.dm.cluman.cluster.docker.model.*;
+import com.codeabovelab.dm.cluman.cluster.docker.model.Node;
+import com.codeabovelab.dm.cluman.ds.clusters.ClusterUtils;
 import com.codeabovelab.dm.cluman.model.Application;
 import com.codeabovelab.dm.cluman.model.ContainerBaseIface;
 import com.codeabovelab.dm.cluman.model.NodesGroup;
-import com.codeabovelab.dm.cluman.ui.model.*;
+import com.codeabovelab.dm.cluman.ui.model.UIResult;
+import com.codeabovelab.dm.cluman.ui.model.UiContainer;
+import com.codeabovelab.dm.cluman.ui.model.UiContainerIface;
+import com.codeabovelab.dm.cluman.ui.model.UiError;
+import com.codeabovelab.dm.cluman.utils.ContainerUtils;
 import com.codeabovelab.dm.common.utils.Booleans;
 import org.joda.time.LocalTime;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.springframework.http.HttpStatus.*;
 
@@ -64,34 +73,24 @@ public final class UiUtils {
 
         String message = code + " " + (result.getMessage() == null ? "" : result.getMessage());
         if (code == ResultCode.OK) {
-            UIResult res = new UIResult();
-            res.setMessage(message);
-            res.setCode(OK.value());
-            return new ResponseEntity<>(res, OK);
+            return okResponse(message);
         } else {
-            UiError err = new UiError();
-            err.setMessage(message);
-            err.setCode(toStatus(code).value());
-            return new ResponseEntity<>(err, toStatus(code));
+            return errResponse(code, message);
         }
     }
 
-    public static String portsToString(List<Port> ports) {
-        StringBuilder sb = new StringBuilder();
-        for (Port port : ports) {
-            if (sb.length() > 0) {
-                sb.append(",  ");
-            }
-            sb.append(port.getType()).append('\u00A0');
-            sb.append(port.getIp()).append(':');
-            sb.append(port.getPrivatePort());
-            int publicPort = port.getPublicPort();
-            if (publicPort != 0) {
-                sb.append("\u00A0\u21D2\u00A0");
-                sb.append(publicPort);
-            }
-        }
-        return sb.toString();
+    static ResponseEntity<UIResult> errResponse(ResultCode code, String message) {
+        UiError err = new UiError();
+        err.setMessage(message);
+        err.setCode(toStatus(code).value());
+        return new ResponseEntity<>(err, toStatus(code));
+    }
+
+    static ResponseEntity<UIResult> okResponse(String message) {
+        UIResult res = new UIResult();
+        res.setMessage(message);
+        res.setCode(OK.value());
+        return new ResponseEntity<>(res, OK);
     }
 
     public static double convertToGB(long memory) {
@@ -110,18 +109,9 @@ public final class UiUtils {
         return convertToMb((long)memory);
     }
 
-    public static List<String> bindsToString(List<Bind> binds) {
-        List<String> list = new ArrayList<>();
-        for (Bind bind : binds) {
-            list.add(bind.toString());
-        }
-        return list;
-    }
-
     public static String convertToStringFromJiffies(Long jiffies) {
         LocalTime timeOfDay = LocalTime.fromMillisOfDay(jiffies / 1000_000L);
-        String time = timeOfDay.toString("HH:mm:ss");
-        return time;
+        return timeOfDay.toString("HH:mm:ss");
     }
 
     public static double convertToPercentFromJiffies(Long cpu, Long prevCpu, Long system, Long previousSystem, int cores) {
@@ -138,7 +128,7 @@ public final class UiUtils {
         return round(cpuPercent, 2);
     }
 
-    public static double round(double value, int places) {
+    static double round(double value, int places) {
         if (places < 0) throw new IllegalArgumentException();
 
         long factor = (long) Math.pow(10, places);
@@ -176,7 +166,7 @@ public final class UiUtils {
     static Map<String, String> mapAppContainer(ApplicationService applicationService, NodesGroup cluster) {
         try {
             Map<String, String> containerApp = new HashMap<>();
-            if(cluster.getFeatures().contains(NodesGroup.Feature.SWARM)) {
+            if(ClusterUtils.isDockerBased(cluster)) {
                 addContainerMapping(applicationService, cluster.getName(), containerApp);
             } else {
                 for(String child: cluster.getGroups()) {
@@ -209,4 +199,19 @@ public final class UiUtils {
         }
         return host + ":" + environment.getProperty("dm.server.port");
     }
+
+    static List<UiContainer> sortAndFilterContainers(List<UiContainer> list) {
+        List<UiContainer> filteredContainers = filterEmptyContainers(list);
+        Collections.sort(filteredContainers);
+        return filteredContainers;
+    }
+
+    /**
+     * workaround for preventing getting empty lines at UI
+     * TODO: fix in https://github.com/codeabovelab/haven-platform/issues/56
+     */
+    static List<UiContainer> filterEmptyContainers(List<UiContainer> list) {
+        return list.stream().filter(c -> StringUtils.hasText(c.getNode())).collect(Collectors.toList());
+    }
+
 }

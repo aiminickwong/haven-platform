@@ -18,20 +18,14 @@ package com.codeabovelab.dm.cluman.source;
 
 import com.codeabovelab.dm.cluman.cluster.application.ApplicationService;
 import com.codeabovelab.dm.cluman.cluster.docker.management.DockerService;
-import com.codeabovelab.dm.cluman.cluster.docker.management.argument.CreateContainerArg;
 import com.codeabovelab.dm.cluman.cluster.docker.management.argument.DeleteContainerArg;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.CreateAndStartContainerResult;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.ResultCode;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.ServiceCallResult;
 import com.codeabovelab.dm.cluman.ds.SwarmUtils;
-import com.codeabovelab.dm.cluman.ds.clusters.NodesGroupConfig;
-import com.codeabovelab.dm.cluman.ds.clusters.RealCluster;
-import com.codeabovelab.dm.cluman.ds.clusters.SwarmNodesGroupConfig;
-import com.codeabovelab.dm.cluman.ds.container.ContainerManager;
 import com.codeabovelab.dm.cluman.ds.container.ContainerRegistration;
 import com.codeabovelab.dm.cluman.ds.container.ContainerStorage;
 import com.codeabovelab.dm.cluman.ds.nodes.NodeStorage;
-import com.codeabovelab.dm.cluman.ds.swarm.NetworkManager;
 import com.codeabovelab.dm.cluman.job.JobBean;
 import com.codeabovelab.dm.cluman.job.JobContext;
 import com.codeabovelab.dm.cluman.job.JobParam;
@@ -77,13 +71,14 @@ public class DeploySourceJob implements Runnable {
         private ClusterSource cluster;
         private ApplicationSource app;
         private DockerService service;
+        private NodesGroup nodesGroup;
 
         public String getPath(String container) {
-            StringBuilder sb = new StringBuilder()
-              .append(getClusterName()).append('/')
-              .append(getApplicationName()).append('/')
-              .append(container);
-            return sb.toString();
+            return new StringBuilder()
+                    .append(getClusterName()).append('/')
+                    .append(getApplicationName()).append('/')
+                    .append(container)
+                    .toString();
         }
 
         private String getApplicationName() {
@@ -105,9 +100,6 @@ public class DeploySourceJob implements Runnable {
     private DiscoveryStorage discoveryStorage;
 
     @Autowired
-    private ContainerManager containerManager;
-
-    @Autowired
     private ContainerStorage containerStorage;
 
     @Autowired
@@ -115,9 +107,6 @@ public class DeploySourceJob implements Runnable {
 
     @Autowired
     private NodeStorage nodeStorage;
-
-    @Autowired
-    private NetworkManager networkManager;
 
     @Autowired
     private JobContext jobContext;
@@ -141,12 +130,10 @@ public class DeploySourceJob implements Runnable {
         String cluster = clusterSource.getName();
         jobContext.fire("Begin create cluster: {0}", cluster);
         NodesGroup ng = discoveryStorage.getOrCreateCluster(cluster, ccc -> {
-            RealCluster rc = ccc.getCluster();
-            SwarmNodesGroupConfig cc = rc.getConfig();
-            NodesGroupConfig.copy(clusterSource, cc);
-            cc.setConfig(clusterSource.getConfig());
-            jobContext.fire("Create cluster: {0}, with config: {1}", cluster, cc);
+            ccc.setBeforeClusterInit((c) -> jobContext.fire("Create cluster: {0}, with config: {1}", cluster, c.getConfig()));
+            return ccc.createConfig(clusterSource.getType());
         });
+        dc.setNodesGroup(ng);
         dc.setService(ng.getDocker());
         addNodes(dc, clusterSource);
         deployContainers(dc, clusterSource, ContainerHandler.NOP);
@@ -191,10 +178,11 @@ public class DeploySourceJob implements Runnable {
         if(nodes.isEmpty()) {
             return;
         }
+        NodesGroup nodesGroup = dc.getNodesGroup();
         i = 0;
         while(true) {
             i++;
-            ServiceCallResult res = networkManager.createNetwork(clusterName);
+            ServiceCallResult res = nodesGroup.getNetworks().createNetwork(clusterName);
             ResultCode code = res.getCode();
             if(code == ResultCode.OK || code == ResultCode.NOT_MODIFIED) {
                 break;
@@ -206,13 +194,11 @@ public class DeploySourceJob implements Runnable {
         }
     }
 
-    private void deployApp(Ctx dc, ApplicationSource appSrc) throws Exception {
+    private void deployApp(Ctx dc, ApplicationSource appSrc) {
         dc.setApp(appSrc);
         jobContext.fire("Begin create app {0}", appSrc.getName());
         List<String> containerNames = new ArrayList<>();
-        ContainerHandler ch = (cs, cr) -> {
-            containerNames.add(cr.getName());
-        };
+        ContainerHandler ch = (cs, cr) -> containerNames.add(cr.getName());
         deployContainers(dc, appSrc, ch);
         ApplicationImpl app = ApplicationImpl.builder()
           .name(appSrc.getName())
@@ -241,9 +227,9 @@ public class DeploySourceJob implements Runnable {
         clone.setApplication(ctx.getApplicationName());
         clone.setCluster(ctx.getClusterName());
         SwarmUtils.clearConstraints(clone.getLabels());
-        CreateContainerArg cca = CreateContainerArg.builder().container(clone)
-                .watcher((pe) -> jobContext.fire("On {0}, {1}", containerLogId, pe.getMessage())).build();
-        CreateAndStartContainerResult ccr = containerManager.createContainer(cca);
+        CreateContainerArg cca = new CreateContainerArg().container(clone)
+                .watcher((pe) -> jobContext.fire("On {0}, {1}", containerLogId, pe.getMessage()));
+        CreateAndStartContainerResult ccr = ctx.getNodesGroup().getContainers().createContainer(cca);
         ch.handle(clone, ccr);
         String containerId = ccr.getContainerId();
         jobContext.fire("End create container {0} with id {1} and result {2}", containerLogId, containerId, ccr);
@@ -262,7 +248,10 @@ public class DeploySourceJob implements Runnable {
         String id = containerSource.getId();
         List<ContainerRegistration> containers = containerStorage.getContainers();
         for(ContainerRegistration cr: containers) {
-            ContainerBase cb = cr.getContainer();
+            DockerContainer cb = cr.getContainer();
+            if(cb == null) {
+                continue;
+            }
             String crName = cb.getName();
             final String crId = cr.getId();
             if(name.equals(crName)) {

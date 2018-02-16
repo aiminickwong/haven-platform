@@ -16,17 +16,17 @@
 
 package com.codeabovelab.dm.cluman.batch;
 
-import com.codeabovelab.dm.cluman.cluster.docker.management.argument.CreateContainerArg;
+import com.codeabovelab.dm.cluman.model.CreateContainerArg;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.CreateAndStartContainerResult;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.ProcessEvent;
 import com.codeabovelab.dm.cluman.cluster.docker.management.result.ResultCode;
 import com.codeabovelab.dm.cluman.configs.container.DefaultParser;
-import com.codeabovelab.dm.cluman.ds.container.ContainerManager;
 import com.codeabovelab.dm.cluman.job.JobComponent;
 import com.codeabovelab.dm.cluman.job.JobContext;
 import com.codeabovelab.dm.cluman.job.JobParam;
 import com.codeabovelab.dm.cluman.model.ContainerSource;
 import com.codeabovelab.dm.cluman.model.ImageName;
+import com.codeabovelab.dm.cluman.model.NodesGroup;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.Assert;
@@ -42,7 +42,7 @@ import java.util.function.Consumer;
 public class CreateContainerTasklet {
 
     @Autowired
-    private ContainerManager containerManager;
+    private NodesGroup nodesGroup;
 
     @Autowired
     private JobContext context;
@@ -66,12 +66,11 @@ public class CreateContainerTasklet {
         cs.setImage(item.getImage());
         cs.setImageId(item.getImageId());
         context.fire("Create container \"{0}\" with \"{1}\" image on \"{2}\" node", cs.getName(), cs.getImage(), cs.getNode());
-        CreateContainerArg arg = CreateContainerArg.builder()
+        CreateContainerArg arg = new CreateContainerArg()
                 .enrichConfigs(true) // add to API
                 .container(cs)
-                .watcher(new MessageProxy())
-                .build();
-        CreateAndStartContainerResult res = containerManager.createContainer(arg);
+                .watcher(new MessageProxy());
+        CreateAndStartContainerResult res = nodesGroup.getContainers().createContainer(arg);
         item = item.makeCopy().id(res.getContainerId()).name(res.getName()).build();
         rollback.record(item, RollbackData.Action.CREATE);
         ResultCode code = res.getCode();

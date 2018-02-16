@@ -52,4 +52,15 @@ public final class Closeables {
             close((AutoCloseable) mayBeCloseable);
         }
     }
+
+    /**
+     * Apply {@link #close(AutoCloseable)} to each items in collection.
+     * @param closeables any iterable or null
+     */
+    public static void closeAll(Iterable<? extends AutoCloseable> closeables) {
+        if(closeables == null) {
+            return;
+        }
+        closeables.forEach(Closeables::close);
+    }
 }
